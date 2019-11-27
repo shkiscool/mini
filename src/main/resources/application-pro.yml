@@ -1,0 +1,61 @@
+server:
+  port: 9085
+  servlet:
+    context-path: /api
+
+#配置图片上传路径
+web:
+  upload-path: /upload/images/
+##法度物资提交请求路径
+law:
+  post-material: http://202.109.255.205:8066/forfeitureGoods/adds
+spring:
+  datasource:
+    type: com.alibaba.druid.pool.DruidDataSource
+    url: jdbc:mysql://47.105.248.152:9082/cb_wms?useUnicode=true&characterEncoding=UTF-8&serverTimezone=CTT&allowMultiQueries=true&allowPublicKeyRetrieval=true&verifyServerCertificate=false&useSSL=false
+    username: cbwms
+    password: dazhao123
+    driver-class-name: com.mysql.cj.jdbc.Driver
+    initialSize: 5
+    minIdle: 5
+    maxActive: 20
+    maxWait: 60000
+    timeBetweenEvictionRunsMillis: 60000
+    minEvictableIdleTimeMillis: 300000
+    validationQuery: SELECT1FROMDUAL
+    testWhileIdle: true
+    testOnBorrow: false
+    testOnReturn: false
+    poolPreparedStatements: true
+    maxPoolPreparedStatementPerConnectionSize: 20
+    filters: stat,wall
+    connectionProperties=druid.stat.mergeSql=true;druid.stat.slowSqlMillis: 5000
+  devtools:
+    restart:
+      enabled: true
+  resources:
+    static-locations: file:${web.upload-path}
+mybatis:
+  mapper-locations: classpath:mapper/*Mapper.xml
+  type-aliases-package: com.dazhao.pojo.dao
+  #配置sql打印日志
+  configuration:
+    log-impl: org.apache.ibatis.logging.stdout.StdOutImpl
+    map-underscore-to-camel-case: true
+
+pagehelper:
+  helper-dialect: mysql
+  reasonable: true
+  support-methods-arguments: true
+  params: count=countsql
+
+#存证云用户id  测试49482 正式 21673413
+cunnar:
+  userId: 21673413
+  temporary-files-path: /upload/excel/
+
+
+
+
+
+

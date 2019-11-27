@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+    <!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.dazhao.pojo.mapper.BillAndMaterialMapper">
+<insert id="insertBillAndMaterials">
+    INSERT INTO bill_and_material
+    (
+     bill_id,
+     material_id
+    )
+    VALUES
+    <foreach collection="list" item="item" index="index" separator=",">
+    (
+     #{billId},
+     #{item}
+     )
+    </foreach>
+</insert>
+</mapper>

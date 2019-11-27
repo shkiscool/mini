@@ -1,0 +1,554 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.dazhao.pojo.mapper.MaterialMapper">
+
+    <resultMap id="materialResult" type="com.dazhao.pojo.dao.Material">
+        <id column="id" property="id"/>
+        <result column="material_number" property="materialNumber"/>
+        <result column="material_status" property="materialStatus"/>
+        <result column="location_id" property="locationId"/>
+        <result column="material_name" property="materialName"/>
+        <result column="material_unit" property="materialUnit"/>
+        <result column="material_type" property="materialType"/>
+        <result column="create_time" property="createTime"/>
+        <result column="deleted" property="deleted"/>
+        <result column="is_print_rfid" property="printRFID"/>
+        <result column="source_name" property="sourceName"/>
+        <result column="location_number" property="locationNumber"/>
+        <result column="sort_name" property="sortName"/>
+        <result column="keep_days" property="keepDays"/>
+        <result column="store_time" property="storeTime"/>
+    </resultMap>
+
+    <update id="updateMaterialByMaterialNumbers">
+        UPDATE material
+        SET material_status = #{materialStatus}
+        WHERE deleted = 0 AND material_number IN
+            <foreach collection="materialNumbers" item="materialNumber" open="(" close=")" separator=",">
+                #{materialNumber}
+            </foreach>
+    </update>
+
+    <select id="listMaterialIdByMaterialNumbers" resultType="int">
+        SELECT id
+        FROM material
+        WHERE deleted = 0 AND material_status = 1 AND material_number IN
+            <foreach collection="materialNumbers" item="materialNumber" open="(" close=")" separator=",">
+                #{materialNumber}
+            </foreach>
+    </select>
+
+    <select id="checkMatrialStatusIfSatisfies" resultType="int">
+        SELECT Count(1)
+        FROM material
+        WHERE deleted = 0 AND material_status = #{materialStatus} AND id IN
+            <foreach collection="materialIdList" item="id" open="(" close=")" separator=",">
+                #{id}
+            </foreach>
+    </select>
+    <!--根据物资编码获取单个物资信息-->
+    <select id="getMaterialByMaterialNumber" resultMap="materialResult">
+        SELECT
+            m.id,
+            m.material_number,
+            m.material_status,
+            m.location_id,
+            m.material_name,
+            m.material_unit,
+            m.material_type,
+            m.material_comment,
+            m.create_time,
+            m.deleted,
+            m.is_print_rfid,
+            (SELECT location_number FROM location l WHERE l.id = m.location_id) location_number,
+            (SELECT ms.sort_name FROM material_sort ms WHERE ms.id = m.sort_id) sort_name,
+            (
+                SELECT ms.source_name FROM material_source ms WHERE ms.id = (
+                    SELECT material_source_id FROM bill b WHERE b.id = (
+                        SELECT DISTINCT bm.bill_id FROM bill_and_material bm WHERE bm.material_id = m.id
+                    )
+                )
+            ) source_name,
+           (
+                SELECT ms.keep_days FROM material_source ms WHERE ms.id = (
+                    SELECT material_source_id FROM bill b WHERE b.id = (
+                        SELECT DISTINCT bm.bill_id FROM bill_and_material bm WHERE bm.material_id = m.id
+                    )
+                )
+           ) keep_days,
+           DATEDIFF(NOW(),m.create_time) store_time
+        FROM material m
+        WHERE material_number = #{materialNumber} AND deleted = 0
+    </select>
+
+
+
+    <select id="queryInboundMaterialGroupDetailByConditon" parameterType="com.dazhao.pojo.bo.MaterialGroupParameterBO" resultType="material">
+     SELECT *
+     FROM (
+           SELECT m.*
+           FROM
+               bill_and_material bm,
+               material m
+           WHERE bm.material_id = m.id AND bm.bill_id = #{billId}
+     ) a
+     WHERE a.sort_id = #{sortId} AND a.material_name = #{materialName} AND a.material_unit = #{materialUnit}
+         AND a.material_type = #{materialType} AND a.material_comment = #{materialComment} AND a.location_id = #{locationId}
+    </select>
+
+    <update id="updateMaterialStatusByMaterialId">
+        UPDATE material
+        SET
+            material_status = #{newMaterialStatus},
+            update_time=#{updateTime}
+            <if test="newMaterialStatus == 3 or newMaterialStatus == 4">
+            ,deleted = 1
+            </if>
+        WHERE deleted = 0 AND material_status = #{oldMaterialStatus} AND id IN
+            <foreach collection="materialIdList" item="id" open="(" close=")" separator=",">
+                #{id}
+            </foreach>
+    </update>
+
+    <!--SELECT live_day FROM notification_condition WHERE id = 2 查询满足销毁存放天数-->
+    <select id="queryCanDestoryBill" resultType="com.dazhao.pojo.vo.ChoiceBillVO">
+        SELECT
+            e.id,
+            e.voucher_number,
+            e.case_number,
+            e.create_time,
+            e.expire_time,
+            ms.source_name,
+            DATEDIFF(CURDATE(),e.create_time) AS keep_days
+        FROM (
+             SELECT bi.*
+             FROM (
+                 SELECT DISTINCT b.voucher_number
+                 FROM (
+                      SELECT *
+                      FROM bill
+                      WHERE deleted = 0 AND bill_type = 1
+                          AND DATEDIFF(CURDATE(),create_time) >= (SELECT live_day FROM notification_condition WHERE id = 2)
+                 ) b,
+                     bill_and_material bam,
+                     material m
+                 WHERE b.id = bam.bill_id AND bam.material_id = m.id
+                    <trim prefix=" " suffix=" ">
+                        <if test="materialNumber != null and materialNumber != ''">
+                            AND INSTR( m.material_number, #{materialNumber}) > 0
+                        </if>
+                        <if test="materialName != null and materialName !=''">
+                            AND INSTR( m.material_name, #{materialName}) > 0
+                        </if>
+                        <if test="materialSourceId != null and materialSourceId !=''">
+                            AND b.material_source_id = #{materialSourceId}
+                        </if>
+                        <if test="voucherNumber != null and voucherNumber !=''">
+                            AND INSTR(b.voucher_number, #{voucherNumber}) > 0
+                        </if>
+                    </trim>
+             ) a
+              LEFT JOIN bill bi ON a.voucher_number = bi.voucher_number
+        ) e
+        LEFT JOIN material_source ms ON ms.id = e.material_source_id
+        ORDER BY e.create_time DESC
+    </select>
+    <select id="queryDestoryMaterialGroupByBillId" resultType="com.dazhao.pojo.vo.MaterialGroupVO">
+        SELECT
+            a.material_name,
+            a.material_unit,
+            a.material_type,
+            a.material_comment,
+            ms.sort_name,
+            lc.location_number,
+            a.sort_id,
+            a.location_id,
+            COUNT(1) AS total
+        FROM (
+             SELECT m.*
+             FROM
+                 bill_and_material bam,
+                 material m
+             WHERE bam.material_id = m.id AND m.material_status IN (1, 2)
+                    AND bam.bill_id IN
+                    <foreach collection="billIds" item="id" open="(" close=")" separator=",">
+                        #{id}
+                    </foreach>
+        ) a
+        LEFT JOIN material_sort ms ON ms.id = a.sort_id
+        LEFT JOIN location lc ON a.location_id = lc.id
+        GROUP BY a.material_name, a.material_unit, a.material_type, a.material_comment,
+            ms.sort_name, lc.location_number, a.sort_id, a.location_id
+    </select>
+
+    <select id="queryDestoryMaterial" resultType="material">
+        SELECT
+            a.*,
+            ms.sort_name,
+            lc.location_number,
+            msc.source_name,
+            msc.keep_days,
+            DATEDIFF(NOW(),a.create_time) store_time
+        FROM (
+             SELECT
+                 b.material_source_id,
+                 b.voucher_number,
+                 m.*
+             FROM
+                 bill_and_material bam,
+                 material m,
+                 bill b
+            WHERE bam.material_id = m.id AND b.id = bam.bill_id AND m.material_status IN(1, 2) AND bam.bill_id IN
+                    <foreach collection="billIds" item="id" open="(" close=")" separator=",">
+                        #{id}
+                    </foreach>
+        ) a
+        LEFT JOIN material_source msc ON msc.id = a.material_source_id
+        LEFT JOIN material_sort ms ON ms.id = a.sort_id
+        LEFT JOIN location lc ON a.location_id = lc.id
+    </select>
+
+    <select id="queryMaterialGroupByCondition" parameterType="com.dazhao.pojo.bo.MaterialGroupQueryConditionBO"
+        resultType="com.dazhao.pojo.vo.MaterialGroupVO">
+        SELECT c.*
+        FROM (
+            SELECT
+                MAX(lc.location_number) AS location_number,
+                MAX(ms.source_name) AS source_name,
+                MAX(mst.sort_name) AS sort_name,
+                MAX(ms.keep_days) AS keep_days,
+                MAX(sta.status_name) AS materialStatusName,
+                a.sort_id,
+                a.material_name,
+                a.material_type,
+                a.material_unit,
+                a.material_status,
+                a.location_id,
+                a.material_source_id,
+                DATE_FORMAT(MAX(a.create_time),"%Y-%m-%d") AS create_time,
+                COUNT(1) AS total,
+                DATE_FORMAT(MAX(a.expire_time),"%Y-%m-%d") AS expireTime,
+                if(DATEDIFF(CURDATE(),MAX(a.expire_time))>0,DATEDIFF(CURDATE(),MAX(a.expire_time)),0) AS overDay
+            FROM (
+                SELECT
+                    m.sort_id,
+                    m.material_name,
+                    m.material_type,
+                    m.material_unit,
+                    m.material_status,
+                    m.location_id,
+                    bi.material_source_id,
+                    bi.create_time,
+                    bi.expire_time
+                FROM
+                    material m,
+                    bill_and_material bam,
+                    bill bi
+                WHERE m.id = bam.material_id AND bi.id = bam.bill_id
+                    <if test="materialStatus != null">
+                     AND m.material_status = #{materialStatus}
+                    </if>
+                    <if test="materialNumber != null and materialNumber != ''">
+                    AND  INSTR(m.material_number, #{materialNumber} ) > 0
+                    </if>
+                    <if test="materialName!= null and materialName != ''">
+                    AND INSTR(m.material_name, #{materialName} ) > 0
+                    </if>
+            ) a
+                LEFT JOIN location lc ON lc.id = a.location_id
+                LEFT JOIN material_source ms ON ms.id = a.material_source_id
+                LEFT JOIN material_sort mst ON mst.id = a.sort_id
+                LEFT JOIN material_status sta ON sta.id = a.material_status
+                GROUP BY a.material_name, a.sort_id, a.material_type, a.material_unit, a.material_status, a.location_id,
+                    a.material_source_id, DATE_FORMAT(a.create_time,"%Y-%m-%d")
+        ) c
+        WHERE 1 = 1
+            <if test="expireBeginTime != null and expireBeginTime != ''">
+                AND UNIX_TIMESTAMP(c.expireTime) &gt;= UNIX_TIMESTAMP(#{expireBeginTime})
+            </if>
+            <if test="expireEndTime != null and expireEndTime != ''">
+                AND UNIX_TIMESTAMP(c.expireTime) &lt;= UNIX_TIMESTAMP(#{expireEndTime})
+            </if>
+            <if test="createTime != null and createTime != ''">
+                AND INSTR(c.create_time, #{createTime}) > 0
+            </if>
+            <if test="sourceId != null">
+                AND c.material_source_id = #{sourceId}
+            </if>
+        ORDER BY c.create_time DESC
+    </select>
+
+    <select id="queryMaterialGroupDetailsByCondition" parameterType="com.dazhao.pojo.bo.MaterialGroupParameterBO"
+        resultType="com.dazhao.pojo.vo.BillAndMaterialVO">
+     SELECT
+         bi.voucher_number,
+         m.material_number,
+         m.material_name,
+         m.id AS material_id
+     FROM
+         material m,
+         bill_and_material bam,
+         bill bi
+     WHERE m.id = bam.material_id AND bam.bill_id = bi.id
+         AND m.material_name = #{materialName} AND m.sort_id = #{sortId} AND m.material_type = #{materialType}
+         AND m.material_unit = #{materialUnit} AND m.material_status = #{materialStatus} AND m.location_id = #{locationId}
+         AND DATE_FORMAT(m.create_time,"%Y-%m-%d") = #{createTime} AND bi.material_source_id = #{materialSourceId}
+     </select>
+
+    <select id="queryMaterialAndBillDetialsByMaterialId" resultType="com.dazhao.pojo.vo.BillAndMaterialDetailsVO">
+     SELECT
+         bi.voucher_number,
+         bi.confiscate_date,
+         bi.id AS bill_id,
+         bi.recipient_name,
+         msc.source_name,
+         a.material_status,
+         a.material_number,
+         a.sort_name,
+         a.material_name,
+         a.material_number,
+         a.material_unit,
+         a.material_type,
+         a.create_time,
+         lc.location_number,
+         a.material_comment,
+         bi.case_number,
+         bi.confiscate_name,
+         bi.address,
+         bi.consigner_name,
+         bi.consigner_department,
+         bi.recipient_name,
+         bi.create_time,
+         bi.reason,
+         bi.clause,
+         bi.expire_time,
+         if(DATEDIFF(CURDATE(),bi.expire_time)>0,DATEDIFF(CURDATE(),bi.expire_time),0) AS overDay
+     FROM (
+         SELECT m.*,ms.sort_name
+         FROM material m,material_sort ms
+         WHERE ms.id = m.sort_id AND m.id = #{value}
+     ) a
+     LEFT JOIN bill_and_material bam ON bam.material_id = a.id
+     LEFT JOIN bill bi ON bi.id = bam.bill_id
+     LEFT JOIN material_source msc ON msc.id = bi.material_source_id
+     LEFT JOIN location lc ON lc.id = a.location_id
+    </select>
+
+    <select id="queryExistMaterialGroup" resultType="com.dazhao.pojo.vo.MaterialGroupVO">
+        SELECT
+            m.material_name,
+            m.material_comment,
+            m.material_type,
+            m.material_unit,
+            m.location_id,
+            lc.location_number,
+            ms.sort_name,
+            m.sort_id,
+            COUNT(1) AS total
+        FROM material m
+        LEFT JOIN location lc ON lc.id = m.location_id
+        LEFT JOIN material_sort ms ON ms.id = m.sort_id
+        WHERE m.deleted = 0 AND m.material_status = 1
+            <if test="materialName !=null and materialName !=''">
+                AND instr(material_name,#{materialName})>0
+            </if>
+            <if test="locationId != null">
+                AND m.location_id = #{locationId}
+            </if>
+        GROUP BY m.material_name, m.material_comment, m.material_type, m.material_unit, m.location_id,
+            lc.location_number, ms.sort_name, m.sort_id
+    </select>
+
+    <select id="queryExistMaterialGroupDetail" parameterType="com.dazhao.pojo.bo.MaterialGroupParameterBO"
+        resultType="com.dazhao.pojo.vo.CheckMaterialVO">
+        SELECT
+            rs.material_number,
+            rs.material_status,
+            rs.material_id,
+            bi.material_source_id,
+            bi.create_time,
+            ms.source_name,
+            bi.expire_time,
+            if(DATEDIFF(CURDATE(),bi.expire_time)>0,DATEDIFF(CURDATE(),bi.expire_time),0) AS overDay
+        FROM (
+             SELECT
+                 bam.bill_id,
+                 a.material_number,
+                 a.material_status,
+                 a.id AS material_id
+             FROM (
+                   SELECT *
+                   FROM material
+                   WHERE deleted =0 AND material_status= 1 AND material_name=#{materialName}
+                       AND material_comment=#{materialComment} AND material_type=#{materialType}
+                       AND material_unit = #{materialUnit} AND location_id=#{locationId} AND sort_id=#{sortId}
+             ) a,
+             bill_and_material bam
+            WHERE bam.material_id = a.id
+        ) rs
+        LEFT JOIN bill bi ON bi.id = rs.bill_id
+        LEFT JOIN material_source ms ON ms.id = bi.material_source_id
+    </select>
+
+    <update id="updateMaterialStatusAndComment" parameterType="java.util.List">
+        <foreach collection="list" item="bean" index="index" open="" close="" separator=";">
+            UPDATE material
+            <set>
+                material_status = #{bean.materialStatus},
+                <if test="bean.materialStatus == 6">
+                    deleted  = 1,
+                </if>
+                material_comment = #{bean.problemDescribe}
+            </set>
+            <where>
+                id = #{bean.materialId}
+            </where>
+        </foreach>
+    </update>
+
+    <update id="updateMaterialLocation">
+        UPDATE material
+        SET location_id =#{locationId}
+        WHERE id IN
+        <foreach collection="materialList" item="material" open="(" close=")" separator=",">
+            #{material.id}
+        </foreach>
+
+    </update>
+
+    <select id="listSourceProportion" resultType="com.dazhao.pojo.vo.StatisticsVo">
+       SELECT
+           c.total AS `count`,
+           c.source_name AS item,
+           CONCAT(ROUND(c.total/t.totalCount*100, 2),'%') AS percent
+       FROM (
+            SELECT
+                COUNT(1) AS total,
+                ms.source_name
+            FROM (
+                 SELECT b.material_source_id
+                 FROM
+                     material m,
+                     bill_and_material bm,
+                     bill b
+                 WHERE b.id = bm.bill_id AND bm.material_id = m.id AND m.material_status IN (1,2) AND m.deleted = 0
+            ) a
+            LEFT JOIN material_source ms ON ms.id = a.material_source_id
+            GROUP BY a.material_source_id,ms.source_name
+       ) c, (
+             SELECT COUNT(1) AS totalCount
+             FROM
+                 material m,
+                 bill_and_material bm,
+                 bill b
+             WHERE b.id = bm.bill_id AND bm.material_id = m.id AND m.material_status IN (1,2) AND m.deleted = 0
+       ) t
+    </select>
+
+    <select id="listSortProportion" resultType="com.dazhao.pojo.vo.StatisticsVo">
+        SELECT
+        c.total AS `count`,
+        c.sort_name AS item,
+        CONCAT(ROUND(c.total/t.totalCount*100, 2),'%') AS percent
+        FROM (
+           SELECT COUNT(1) AS total,ms.sort_name
+           FROM(
+               SELECT m.sort_id
+               FROM
+                   material m,
+                   bill_and_material bm,
+                   (
+                        SELECT *
+                        FROM bill
+                            <if test="sourceId != null and sourceId != 0">
+                                WHERE material_source_id = #{sourceId}
+                            </if>
+                   ) b
+               WHERE b.id = bm.bill_id AND bm.material_id = m.id AND m.material_status IN (1,2) AND m.deleted = 0
+           ) a
+           LEFT JOIN material_sort ms ON ms.id = a.sort_id
+           GROUP BY a.sort_id, ms.sort_name
+        ) c,(
+            SELECT COUNT(1) AS totalCount
+            FROM
+                material m,
+                bill_and_material bm,
+               (
+                   SELECT *
+                   FROM bill
+                       <if test="sourceId != null and sourceId != 0">
+                           WHERE material_source_id = #{sourceId}
+                       </if>
+               ) b
+            WHERE b.id = bm.bill_id AND bm.material_id = m.id AND m.material_status IN (1,2) AND m.deleted = 0
+        ) t
+    </select>
+
+    <select id="inboundMaterialStatistics" resultType="com.dazhao.pojo.vo.StatisticsVo">
+        SELECT
+            a.time,
+            SUM(count) AS `count`
+        FROM (
+            SELECT
+                <choose>
+                    <when test="timeUnit != null and timeUnit == 1">
+                        DATE_FORMAT(create_time,"%Y-%m")
+                    </when>
+                    <otherwise>
+                        DATE_FORMAT(create_time,"%Y-%m-%d")
+                    </otherwise>
+                </choose>
+                AS time,
+                COUNT(1) AS `count`
+            FROM material
+            GROUP BY
+                <choose>
+                    <when test="timeUnit != null and timeUnit == 1">
+                        DATE_FORMAT(create_time,"%Y-%m")
+                    </when>
+                    <otherwise>
+                        DATE_FORMAT(create_time,"%Y-%m-%d")
+                    </otherwise>
+                </choose>
+            UNION ALL
+            SELECT
+                <choose>
+                    <when test="timeUnit != null and timeUnit == 1">
+                        DATE_FORMAT(create_time,"%Y-%m")
+                    </when>
+                    <otherwise>
+                        DATE_FORMAT(create_time,"%Y-%m-%d")
+                    </otherwise>
+                </choose>
+                AS time,
+                COUNT(1) AS `count`
+            FROM material_history
+            WHERE operation_type = 5
+            GROUP BY
+                <choose>
+                    <when test="timeUnit != null and timeUnit == 1">
+                        DATE_FORMAT(create_time,"%Y-%m")
+                    </when>
+                    <otherwise>
+                        DATE_FORMAT(create_time,"%Y-%m-%d")
+                    </otherwise>
+                </choose>
+        ) a
+        GROUP BY a.time
+
+    </select>
+
+    <select id="queryMaterialExpireCount" resultType="int">
+        SELECT COUNT(1) AS `count`
+        FROM material
+        WHERE material_status IN(1,2) AND deleted = 0 AND  DATEDIFF(CURDATE(),create_time) >= 10
+    </select>
+
+    <update id="updateMaterialPrintStatus" parameterType="string">
+        UPDATE material
+        SET is_print_rfid = 1
+        WHERE material_number = #{materialNumber}
+    </update>
+
+
+</mapper>

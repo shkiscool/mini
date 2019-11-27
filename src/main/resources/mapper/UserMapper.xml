@@ -1,0 +1,156 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.dazhao.pojo.mapper.UserMapper">
+    <sql id="user_list">
+    id,name,username,create_time,update_time,deleted,role_name
+   </sql>
+    <insert id="createUser" parameterType="User" keyProperty="id" useGeneratedKeys="true">
+        INSERT INTO user
+        <trim prefix="(" suffix=")" suffixOverrides=",">
+            <if test="name != null">
+                name,
+            </if>
+            <if test="username != null">
+                username,
+            </if>
+            <if test="password != null">
+                password,
+            </if>
+            <if test="createTime != null">
+                create_time,
+            </if>
+            <if test="updateTime != null">
+                update_time,
+            </if>
+            <if test="deleted != null">
+                deleted,
+            </if>
+            <if test="roleName != null">
+                role_name,
+            </if>
+
+        </trim>
+        <trim prefix="values (" suffix=")" suffixOverrides=",">
+            <if test="name != null">
+                #{name,jdbcType=VARCHAR},
+            </if>
+            <if test="username != null">
+                #{username,jdbcType=VARCHAR},
+            </if>
+            <if test="password != null">
+                #{password,jdbcType=VARCHAR},
+            </if>
+            <if test="createTime != null">
+                #{createTime,jdbcType=TIMESTAMP},
+            </if>
+            <if test="updateTime != null">
+                #{updateTime,jdbcType=TIMESTAMP},
+            </if>
+            <if test="deleted != null">
+                #{deleted,jdbcType=BIT},
+            </if>
+            <if test="roleName != null">
+                #{roleName,jdbcType=VARCHAR},
+            </if>
+
+        </trim>
+    </insert>
+
+    <select id="findUserByName" parameterType="String" resultType="User">
+        SELECT *
+        FROM user
+        WHERE username = #{value} AND deleted = 0
+    </select>
+
+    <select id="getUserList" resultType="User">
+        SELECT
+        <include refid="user_list"/>
+        FROM user
+        WHERE deleted != 1
+        <if test="name != null and name != ''">
+            AND INSTR(name, #{name}) > 0
+        </if>
+        AND role_name != '超级管理员'
+        ORDER BY create_time DESC
+    </select>
+
+    <update id="updateUserById" parameterType="User">
+
+        UPDATE user
+        SET
+        <trim prefix=" " suffix=" " suffixOverrides=",">
+            <if test="name != null">
+                name = #{name},
+            </if>
+            <if test="username != null">
+                username = #{username},
+            </if>
+            <if test="updateTime != null">
+                update_time = #{updateTime,jdbcType=TIMESTAMP},
+            </if>
+            <if test="deleted != null">
+                deleted=#{deleted},
+            </if>
+            <if test="roleName != null">
+                role_name=#{roleName,jdbcType=VARCHAR},
+            </if>
+        </trim>
+        WHERE id = #{id}
+    </update>
+
+    <update id="deleteUser" parameterType="Integer">
+        UPDATE user
+        SET deleted = '1'
+        WHERE id = #{value}
+    </update>
+
+    <insert id="addUserPermission" parameterType="java.util.List">
+        INSERT INTO user_and_permission
+        (
+        user_id,
+        permission_id
+        )
+        VALUES
+        <foreach collection="list" item="item" index="index" separator=",">
+            (
+            #{userId},
+            #{item}
+            )
+        </foreach>
+
+
+    </insert>
+
+    <select id="getUserPermissionList" parameterType="int" resultType="String">
+
+        SELECT b.permission
+        FROM
+            user_and_permission a,
+            permission b
+        WHERE a.permission_id = b.id AND a.user_id = #{value} AND b.deleted = 0;
+    </select>
+
+    <select id="getPermissionList" resultType="Permission">
+        SELECT *
+        FROM permission
+    </select>
+    <select id="defaultPermissions" resultType="int">
+        SELECT id
+        FROM permission
+        WHERE deleted = '0'
+        <if test="roleType == 2">
+            AND id != 1
+        </if>
+        <if test="roleType == 1">
+            AND id = 1
+        </if>
+    </select>
+
+    <select id="getUserPermissionListByUserId" resultType="Permission">
+        SELECT p.*
+        FROM (
+            SELECT * FROM user_and_permission WHERE user_id = #{userId}
+        ) uap
+        LEFT JOIN permission p ON p.id = uap.permission_id
+    </select>
+</mapper>
