@@ -1,12 +1,10 @@
 package com.dazhao.config;
 
-import com.dazhao.intercepter.AuthInterceptor;
 import javax.servlet.MultipartConfigElement;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.web.servlet.MultipartConfigFactory;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
-import org.springframework.stereotype.Component;
 import org.springframework.util.unit.DataSize;
 import org.springframework.util.unit.DataUnit;
 import org.springframework.web.servlet.config.annotation.CorsRegistry;
@@ -19,10 +17,6 @@ import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
 public class
  CustomWebMvcConfigurer implements WebMvcConfigurer {
 
-    @Bean
-    public AuthInterceptor authInterceptor() {
-        return new AuthInterceptor();
-    }
 
     @Value("${web.upload-path}")
     private String uplodPath;
@@ -50,9 +44,9 @@ public class
 
     @Override
     public void addInterceptors(InterceptorRegistry registry) {
-        registry.addInterceptor(authInterceptor()).addPathPatterns("/**")
-                .excludePathPatterns("/user/auth", "/error","/images/**", "/user/permission_list", "/user/permission/*","/test/*")
-                .excludePathPatterns("/swagger-resources/**", "/webjars/**", "/v2/**", "/swagger-ui.html/**");
+//        registry.addInterceptor(null).addPathPatterns("/**")
+//                .excludePathPatterns("/user/auth", "/error","/images/**", "/user/permission_list", "/user/permission/*","/test/*")
+//                .excludePathPatterns("/swagger-resources/**", "/webjars/**", "/v2/**", "/swagger-ui.html/**");
         WebMvcConfigurer.super.addInterceptors(registry);
     }
 
